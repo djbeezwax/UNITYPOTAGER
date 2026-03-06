@@ -1,27 +1,43 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 
+[RequireComponent(typeof(Rigidbody))]
 public class DroneController : MonoBehaviour
 {
-    [Header("Refs")]
-    public Transform tiltRoot; // TILT (visuel uniquement, optionnel)
+    public Transform tiltRoot;
 
-    [Header("Speeds")]
     public float speed = 6f;
     public float verticalSpeed = 4f;
     public float yawSpeed = 120f;
 
-    [Header("Tilt visuel (optionnel)")]
     public float pitchStep = 2f;
     public float maxPitch = 25f;
     public float tiltSmooth = 12f;
 
-    [Header("Input Actions")]
     public InputActionReference moveAction;
     public InputActionReference verticalAction;
-    public InputActionReference pitchAction; // molette (VISUEL SEULEMENT)
+    public InputActionReference pitchAction;
 
+    Rigidbody rb;
+    Vector2 moveInput;
+    float verticalInput;
     float pitchAngle;
+
+    float yawAngle; // on contrôle le yaw nous-mêmes
+
+    void Awake()
+    {
+        rb = GetComponent<Rigidbody>();
+        rb.useGravity = false;
+        rb.interpolation = RigidbodyInterpolation.Interpolate;
+        rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
+
+        // IMPORTANT : on empêche toute rotation physique
+        rb.constraints = RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationZ;
+
+        // init yaw depuis la rotation actuelle
+        yawAngle = transform.eulerAngles.y;
+    }
 
     void OnEnable()
     {
@@ -39,35 +55,33 @@ public class DroneController : MonoBehaviour
 
     void Update()
     {
-        Vector2 move = moveAction.action.ReadValue<Vector2>();
-        float vertical = verticalAction.action.ReadValue<float>();
+        moveInput = moveAction.action.ReadValue<Vector2>();
+        verticalInput = verticalAction.action.ReadValue<float>();
 
-        // 🔹 Rotation gauche / droite (pivot propre)
-        transform.Rotate(Vector3.up, move.x * yawSpeed * Time.deltaTime);
-
-        // 🔹 Avancer / reculer (direction SIMPLE)
-        transform.position += transform.forward * (move.y * speed * Time.deltaTime);
-
-        // 🔹 Monter / descendre
-        transform.position += Vector3.up * (vertical * verticalSpeed * Time.deltaTime);
-
-        // 🔹 Molette = TILT VISUEL UNIQUEMENT (aucun effet sur la direction)
         float scroll = pitchAction.action.ReadValue<float>();
         if (Mathf.Abs(scroll) > 0.01f)
-            pitchAngle = Mathf.Clamp(
-                pitchAngle + Mathf.Sign(scroll) * pitchStep,
-                -maxPitch,
-                maxPitch
-            );
+        {
+            pitchAngle = Mathf.Clamp(pitchAngle + Mathf.Sign(scroll) * pitchStep, -maxPitch, maxPitch);
+        }
 
         if (tiltRoot != null)
         {
             Quaternion target = Quaternion.Euler(pitchAngle, 0f, 0f);
-            tiltRoot.localRotation = Quaternion.Slerp(
-                tiltRoot.localRotation,
-                target,
-                tiltSmooth * Time.deltaTime
-            );
+            tiltRoot.localRotation = Quaternion.Slerp(tiltRoot.localRotation, target, tiltSmooth * Time.deltaTime);
         }
+    }
+
+    void FixedUpdate()
+    {
+        // YAW contrôlé (Q/D)
+        yawAngle += moveInput.x * yawSpeed * Time.fixedDeltaTime;
+        Quaternion yawRot = Quaternion.Euler(0f, yawAngle, 0f);
+        rb.MoveRotation(yawRot);
+
+        // Direction basée sur yawRot (pas sur transform.forward)
+        Vector3 forward = yawRot * Vector3.forward * (moveInput.y * speed);
+        Vector3 up = Vector3.up * (verticalInput * verticalSpeed);
+
+        rb.MovePosition(rb.position + (forward + up) * Time.fixedDeltaTime);
     }
 }

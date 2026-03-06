@@ -25,4 +25,15 @@ public class Collector : MonoBehaviour
             Destroy(other.gameObject);
         }
     }
+
+    public bool ContainsPoint(Vector3 worldPoint)
+{
+    // On vérifie si le point touché par le raycast est bien dans la "case"
+    // Version simple basée sur le collider.
+    Collider col = GetComponent<Collider>();
+    if (col == null) return false;
+
+    // Option 1 : bounds (simple et suffisant pour un carré bien aligné)
+    return col.bounds.Contains(worldPoint);
+}
 }
